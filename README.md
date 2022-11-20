@@ -22,6 +22,12 @@ if err := parser.Parse(); err != nil {
 }
 ```
 
+## Todo
+- [x] Support short option
+- [ ] Support long option （with abbreviations）
+- [ ] Support option reorder mode
+- [ ] Add tests
+
 ## Author
 remiposo
 
