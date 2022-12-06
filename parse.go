@@ -9,7 +9,8 @@ import (
 var (
 	ErrOptNotFound      = errors.New("option not found")
 	ErrOptAlreadyExists = errors.New("option already exists")
-	ErrOptValueNotFound = errors.New("option's value not found")
+	ErrOptFmtInvalid    = errors.New("option's format invalid")
+	ErrOptNameAmbiguous = errors.New("option's name ambiguous")
 )
 
 type Parser struct {
@@ -23,11 +24,28 @@ func NewParser() *Parser {
 	}
 }
 
-func (p *Parser) Args() []string {
+func (p *Parser) NonOptArgs() []string {
 	return p.nonOptArgs
 }
 
-func (p *Parser) SetOpt(name string, values optValues) error {
+func (p *Parser) findLongOpt(name string) (*opt, error) {
+	results := make([]*opt, 0, len(p.opts))
+	for _, v := range p.opts {
+		if v.abbreviatable(name) {
+			results = append(results, v)
+		}
+	}
+	switch len(results) {
+	case 0:
+		return nil, ErrOptNotFound
+	case 1:
+		return results[0], nil
+	default:
+		return nil, ErrOptNameAmbiguous
+	}
+}
+
+func (p *Parser) setOpt(name string, values optValues) error {
 	opt, err := newOpt(name, values)
 	if err != nil {
 		return err
@@ -40,11 +58,11 @@ func (p *Parser) SetOpt(name string, values optValues) error {
 }
 
 func (p *Parser) SetBoolOpt(name string, values *[]bool) error {
-	return p.SetOpt(name, &boolOptValues{values})
+	return p.setOpt(name, &boolOptValues{values})
 }
 
 func (p *Parser) SetStringOpt(name string, values *[]string) error {
-	return p.SetOpt(name, &stringOptValues{values})
+	return p.setOpt(name, &stringOptValues{values})
 }
 
 func (p *Parser) Parse(args []string) error {
@@ -60,7 +78,11 @@ func (p *Parser) Parse(args []string) error {
 			}
 			idx += count
 		case longOpt:
-			return errors.New("not implemented yet")
+			err := p.parseLongOpt(idx, args)
+			if err != nil {
+				return err
+			}
+			idx += 1
 		case optTerminater:
 			if idx != len(args)-1 {
 				p.setNonOptArgs(args[idx+1:])
@@ -94,7 +116,7 @@ func (p *Parser) parseShortOpt(idx int, args []string) (int, error) {
 			value = args[idx+1]
 			parsed++
 		} else {
-			return parsed, ErrOptValueNotFound
+			return parsed, ErrOptFmtInvalid
 		}
 		if err := opt.appendValue(value); err != nil {
 			return parsed, err
@@ -102,6 +124,30 @@ func (p *Parser) parseShortOpt(idx int, args []string) (int, error) {
 		break
 	}
 	return parsed, nil
+}
+
+func (p *Parser) parseLongOpt(idx int, args []string) error {
+	keyVal := strings.Split(args[idx][2:], "=")
+	key := keyVal[0]
+	opt, err := p.findLongOpt(key)
+	if err != nil {
+		return err
+	}
+	switch len(keyVal) {
+	case 1:
+		if opt.withArg() {
+			return ErrOptFmtInvalid
+		}
+		return opt.appendValue("true")
+	case 2:
+		val := keyVal[1]
+		if !opt.withArg() {
+			return ErrOptFmtInvalid
+		}
+		return opt.appendValue(val)
+	default:
+		return ErrOptFmtInvalid
+	}
 }
 
 type argType int

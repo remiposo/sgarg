@@ -4,6 +4,7 @@ import (
 	"errors"
 	"regexp"
 	"strconv"
+	"strings"
 )
 
 var (
@@ -36,14 +37,23 @@ func (o *opt) appendValue(value string) error {
 	return o.values.Append(value)
 }
 
+func (o *opt) abbreviatable(name string) bool {
+	return o.name.isLong() && strings.HasPrefix(string(o.name), name)
+}
+
 type optName string
 
 func newOptName(name string) (optName, error) {
-	rg := regexp.MustCompile(`^[[:alnum:]]+(?:-[[:alnum]])*$`)
+	rg := regexp.MustCompile(`^[[:alnum:]]+(?:\-[[:alnum:]]+)*$`)
 	if !rg.MatchString(name) {
 		return "", ErrInvalidOptName
 	}
+
 	return optName(name), nil
+}
+
+func (on optName) isLong() bool {
+	return len(on) != 1
 }
 
 type optValues interface {
